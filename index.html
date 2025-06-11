@@ -2,15 +2,16 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <title>Закия — Большое сердце с узлами</title>
+  <title>Закие — Интерактивное сердце с падающими сердечками</title>
   <style>
     html, body {
       width: 100vw;
       height: 100vh;
-      background: #000;
       margin: 0;
       padding: 0;
       overflow: hidden;
+      background: #000;
+      touch-action: manipulation;
     }
     canvas {
       display: block;
@@ -19,16 +20,24 @@
       margin: auto;
       background: #000;
       z-index: 1;
+      touch-action: manipulation;
     }
   </style>
 </head>
 <body>
 <canvas id="heart"></canvas>
 <script>
-const canvas = document.getElementById('heart');
-const ctx = canvas.getContext('2d');
+// --- Настройки ---
+const NAME = "Закие";
+const LETTERS = [...NAME];
+const NODES = 120;
 
-// Классическое сердце с узлами
+// --- Для падающих сердечек ---
+const fallingHearts = [];
+let isRaining = false;
+let rainStartTime = 0;
+
+// --- Сердце ---
 function heartClassic(t, pulse=1) {
   const x = 16 * Math.pow(Math.sin(t), 3) * pulse;
   const y = -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)) * pulse;
@@ -39,46 +48,82 @@ function resize() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
 }
+const canvas = document.getElementById('heart');
+const ctx = canvas.getContext('2d');
 resize();
 window.addEventListener('resize', resize);
 
-const N = 120; // количество узлов (точек)
 let progress = 0;
 let t_start = null;
+let currentIndex = -1; // -1: полное имя, 0...N: буква, >N: дождь
+
+canvas.addEventListener('click', tapHandler);
+canvas.addEventListener('touchstart', tapHandler, {passive: false});
+
+function tapHandler(e) {
+  e.preventDefault();
+  if (isRaining) return;
+  if (currentIndex < LETTERS.length) {
+    currentIndex++;
+    if (currentIndex === LETTERS.length) {
+      startHeartRain();
+    }
+  }
+}
+
+function startHeartRain() {
+  isRaining = true;
+  rainStartTime = performance.now();
+  // Заполнить массив падающих сердечек
+  for(let i=0; i<40; ++i){
+    fallingHearts.push({
+      x: Math.random() * canvas.width,
+      y: -Math.random() * canvas.height,
+      size: 18 + Math.random()*20,
+      speed: 1.2 + Math.random()*2,
+      swing: Math.random()*Math.PI*2,
+      color: Math.random()<0.4 ? "#ff69b4" : "#ffb6e6"
+    });
+  }
+  setTimeout(() => {
+    isRaining = false;
+    currentIndex = -1;
+    fallingHearts.length = 0;
+  }, 2300);
+}
 
 function drawHeart(percent, time) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Увеличиваем размер сердца
-  const size = Math.min(canvas.width, canvas.height) * 0.56;
+  // — Размер и положение сердца —
+  const size = Math.min(canvas.width, canvas.height) * 0.35;
   const pulse = 1 + 0.04 * Math.sin(time/370);
 
   ctx.save();
   ctx.translate(canvas.width/2, canvas.height/2);
   ctx.scale(size/32, size/32);
 
-  // Контур
+  // — Контур сердца —
   ctx.beginPath();
   let first = true;
-  for(let i=0; i<N*percent; ++i){
-    const t = (2*Math.PI) * (i/(N-1));
+  for(let i=0; i<NODES*percent; ++i){
+    const t = (2*Math.PI) * (i/(NODES-1));
     let p = heartClassic(t, pulse);
     if(first){ ctx.moveTo(p.x, p.y); first=false; }
     else ctx.lineTo(p.x, p.y);
   }
   ctx.shadowColor = "#ff69b4";
-  ctx.shadowBlur = 14;
+  ctx.shadowBlur = 12;
   ctx.lineWidth = 3.2;
   ctx.strokeStyle = "#ff69b4";
   ctx.stroke();
 
-  // Узлы (точки)
-  for(let i=0; i<N*percent; ++i){
-    const t = (2*Math.PI) * (i/(N-1));
+  // — Узлы (точки) —
+  for(let i=0; i<NODES*percent; ++i){
+    const t = (2*Math.PI) * (i/(NODES-1));
     let p = heartClassic(t, pulse);
-
     ctx.save();
-    let glow = 11 + 8*Math.abs(Math.sin(time/800 + i));
+    let glow = 9 + 7*Math.abs(Math.sin(time/800 + i));
     ctx.shadowColor = '#fff0fa';
     ctx.shadowBlur = glow;
     ctx.globalAlpha = 0.9 + 0.15 * Math.sin(time/340 + i);
@@ -91,38 +136,68 @@ function drawHeart(percent, time) {
 
   ctx.restore();
 
-  // Надпись по центру сердца (на 4 пикселя меньше!)
-  if (percent === 1) {
+  // — Надпись в центре сердца —
+  if (percent === 1 && !isRaining) {
     ctx.save();
-    ctx.setTransform(1,0,0,1,0,0); // сброс трансформации
+    ctx.setTransform(1,0,0,1,0,0);
     let textX = canvas.width/2;
     let textY = canvas.height/2;
-
-    // Динамический размер шрифта, чтобы надпись не выходила за пределы сердца
-    // и чтобы она была на 4 пикселя меньше, чем максимальный размер
-    let maxFontSize = size/3.7;
-    let fontSize = maxFontSize - 4; // уменьшили на 4 пикселя
-    ctx.font = `bold ${fontSize}px 'Segoe Script', 'Comic Sans MS', cursive, sans-serif`;
-    let text = "Закие";
-    // Проверяем ширину, чтобы не выходила за сердце
-    while (ctx.measureText(text).width > size * 0.92 && fontSize > 12) {
-      fontSize -= 1;
-      ctx.font = `bold ${fontSize}px 'Segoe Script', 'Comic Sans MS', cursive, sans-serif`;
+    let sizeFont = size/3.7 - 4;
+    let text;
+    if(currentIndex === -1) {
+      text = NAME;
+    } else if(currentIndex < LETTERS.length) {
+      text = LETTERS[currentIndex];
+    } else {
+      text = "";
     }
-
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    let glow = 27 + 12*Math.abs(Math.sin(time/800));
-    ctx.shadowColor = "#ffb6e6";
-    ctx.shadowBlur = glow;
-    ctx.fillStyle = "#fff0fa";
-    ctx.globalAlpha = 0.97;
-    ctx.fillText(text, textX, textY);
+    if (text) {
+      ctx.font = `bold ${sizeFont}px 'Segoe Script', 'Comic Sans MS', cursive, sans-serif`;
+      // shrink font if too wide
+      while(ctx.measureText(text).width > size*0.92 && sizeFont > 12) {
+        sizeFont -= 1;
+        ctx.font = `bold ${sizeFont}px 'Segoe Script', 'Comic Sans MS', cursive, sans-serif`;
+      }
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      let glow = 27 + 12*Math.abs(Math.sin(time/800));
+      ctx.shadowColor = "#ffb6e6";
+      ctx.shadowBlur = glow;
+      ctx.fillStyle = "#fff0fa";
+      ctx.globalAlpha = 0.97;
+      ctx.fillText(text, textX, textY);
+    }
     ctx.restore();
   }
 }
 
-// Анимация: появление, пульсация, без вращения
+function drawFallingHearts(time) {
+  for(let h of fallingHearts) {
+    // Движение вниз с качанием
+    h.y += h.speed;
+    h.x += Math.sin(time/320 + h.swing) * 0.9;
+    // Рисуем маленькое сердце
+    ctx.save();
+    ctx.globalAlpha = 0.93;
+    ctx.translate(h.x, h.y);
+    ctx.scale(h.size/32, h.size/32);
+    ctx.beginPath();
+    for(let i=0; i<120; ++i){
+      const t = (2*Math.PI) * (i/119);
+      let p = heartClassic(t, 1);
+      ctx.lineTo(p.x, p.y);
+    }
+    ctx.shadowColor = h.color;
+    ctx.shadowBlur = 14;
+    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = h.color;
+    ctx.fillStyle = h.color;
+    ctx.stroke();
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
 function animate(ts) {
   if(!t_start) t_start = ts;
   const t = ts - t_start;
@@ -133,9 +208,11 @@ function animate(ts) {
     progress = 1;
   }
   drawHeart(progress, t);
+  if (isRaining) drawFallingHearts(t);
   requestAnimationFrame(animate);
 }
 requestAnimationFrame(animate);
+
 </script>
 </body>
 </html>
